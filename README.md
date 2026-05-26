@@ -70,6 +70,12 @@ INPUT_PATH = r"C:\Users\username\Documents\monthly_files"
 # Supports UNC network paths
 OUTPUT_PATH = r"\\fileserver\shared\output\formatted"
 
+# Root folder containing prior month files used for stale and AUM variance checks.
+# Files must be organised in year subfolders:
+#   \\fileserver\shared\archive\2025\FUND_monthly_perf_MGR_20251231.csv
+#   \\fileserver\shared\archive\2026\FUND_monthly_perf_MGR_20260131.csv
+ARCHIVE_PATH = r"\\fileserver\shared\archive"
+
 # Directory for log files (created automatically if it does not exist)
 LOG_DIR = r"C:\Users\username\csv_validator_logs"
 
@@ -170,5 +176,5 @@ C:\Users\username\AppData\Local\Programs\Python\Python311\python.exe run.py
 ## Output
 
 - **Valid files** are formatted and written to `OUTPUT_PATH`
-- **Invalid files** are logged with a per-check breakdown of what failed
-- **Stale warnings** are logged separately and do not block a file from being saved
+- **Invalid files** are logged with a per-check breakdown of what failed and are not saved
+- **Override files** bypass all checks and are saved directly with formatting applied; the override is recorded in the log
