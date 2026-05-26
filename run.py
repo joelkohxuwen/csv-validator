@@ -82,6 +82,7 @@ def main():
     logger.info("Log file  : %s", log_file)
     logger.info("Input     : %s", config.INPUT_PATH)
     logger.info("Output    : %s", config.OUTPUT_PATH)
+    logger.info("Archive   : %s", config.ARCHIVE_PATH)
     if override_files:
         logger.info("Overrides : %s", sorted(override_files))
     logger.info("=" * 60)
@@ -103,7 +104,7 @@ def main():
 
     # 3. Validate normal files
     valid_files, invalid_files = file_check(
-        normal_files, lbu_list=config.LBU_LIST, input_folder=config.INPUT_PATH
+        normal_files, lbu_list=config.LBU_LIST, archive_path=config.ARCHIVE_PATH
     )
 
     # 4. Save valid files

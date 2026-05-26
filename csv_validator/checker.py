@@ -32,7 +32,7 @@ def _ref_columns_for(filename):
 # Public API
 # ---------------------------------------------------------------------------
 
-def file_check(df_dict, lbu_list, input_folder):
+def file_check(df_dict, lbu_list, archive_path):
     """
     Validate every DataFrame in df_dict.
 
@@ -104,7 +104,7 @@ def file_check(df_dict, lbu_list, input_folder):
         )
 
         # --- stale data check — fails the file if data is identical to prior month ---
-        is_stale, stale_msg = check_stale_data(file, filedata, input_folder)
+        is_stale, stale_msg = check_stale_data(file, filedata, archive_path)
         if is_stale is True:
             stale_validity = stale_msg          # truthy non-True → treated as failure
             logger.warning("STALE DATA: %s — %s", file, stale_msg)
@@ -113,7 +113,7 @@ def file_check(df_dict, lbu_list, input_folder):
             logger.info("Stale check: %s — %s", file, stale_msg)
 
         # --- AUM monthly variance check (>5% change per fund fails the file) ---
-        aum_variance_validity = check_aum_variance(file, filedata, input_folder)
+        aum_variance_validity = check_aum_variance(file, filedata, archive_path)
         if aum_variance_validity is not True:
             logger.warning("AUM VARIANCE: %s — %s", file, aum_variance_validity)
 

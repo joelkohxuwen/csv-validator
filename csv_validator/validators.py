@@ -125,12 +125,13 @@ def validate_special_characters(df, ref_columns=None):
     return True if not issues else issues
 
 
-def check_stale_data(filename, current_df, input_folder):
+def check_stale_data(filename, current_df, archive_path):
     """
     Compare current file against the equivalent file from the previous calendar month.
 
-    The prior-month file is expected to have the same name with the YYYYMMDD portion
-    replaced by the last day of the previous month.
+    The prior-month file is looked up under archive_path/<year>/<filename>, where
+    <year> is the year of the previous month and <filename> has its YYYYMMDD portion
+    replaced by the last day of that month.
 
     Returns a tuple (is_stale, message):
       (True,  msg) — all comparable data is identical to prior month (potentially stale)
@@ -147,12 +148,12 @@ def check_stale_data(filename, current_df, input_folder):
     except ValueError:
         return None, f"Invalid date in filename: {date_str}"
 
-    # Last day of previous month
+    # Last day of previous month — its year determines the archive subfolder
     prev_month_last = date_obj.replace(day=1) - timedelta(days=1)
     prev_date_str = prev_month_last.strftime("%Y%m%d")
 
     prev_filename = filename.replace(date_str, prev_date_str)
-    prev_filepath = os.path.join(input_folder, prev_filename)
+    prev_filepath = os.path.join(archive_path, str(prev_month_last.year), prev_filename)
 
     if not os.path.exists(prev_filepath):
         return None, f"No prior month file found: {prev_filename}"
@@ -178,7 +179,7 @@ def check_stale_data(filename, current_df, input_folder):
     return False, f"Data differs from prior month file ({prev_filename})"
 
 
-def check_aum_variance(filename, current_df, input_folder, threshold=0.05):
+def check_aum_variance(filename, current_df, archive_path, threshold=0.05):
     """
     Compare per-fund AUM against the prior month's file.
 
@@ -186,6 +187,7 @@ def check_aum_variance(filename, current_df, input_folder, threshold=0.05):
     Returns True if all funds are within range, or a dict of offending funds.
     Returns True (pass) if the prior month file is absent — benefit of the doubt.
 
+    The prior-month file is looked up under archive_path/<year>/<filename>.
     AUM column checked: first of "AUM in Base Currency (month-end)" or "Closing FUM"
     that is present in the file. Files with neither column are skipped.
     Funds that are new (absent from prior file) are skipped.
@@ -211,7 +213,8 @@ def check_aum_variance(filename, current_df, input_folder, threshold=0.05):
 
     prev_month_last = date_obj.replace(day=1) - timedelta(days=1)
     prev_filepath = os.path.join(
-        input_folder,
+        archive_path,
+        str(prev_month_last.year),
         filename.replace(date_str, prev_month_last.strftime("%Y%m%d")),
     )
 

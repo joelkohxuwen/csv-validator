@@ -11,6 +11,12 @@ INPUT_PATH = r"C:\path\to\your\input\folder"
 # Folder where formatted/validated CSVs are written (can be a UNC network path).
 OUTPUT_PATH = r"\\server\share\path\to\output\folder"
 
+# Root folder containing prior month files used for stale and AUM variance checks.
+# Files must be organised in year subfolders, e.g.:
+#   C:\path\to\archive\2025\FUND_monthly_perf_MGR_20251231.csv
+#   C:\path\to\archive\2026\FUND_monthly_perf_MGR_20260131.csv
+ARCHIVE_PATH = r"C:\path\to\your\archive\folder"
+
 # Directory where log files will be written (created automatically if absent).
 LOG_DIR = r"C:\path\to\your\log\folder"
 
