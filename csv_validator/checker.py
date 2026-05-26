@@ -1,0 +1,137 @@
+import logging
+import re
+
+import config
+from .validators import (
+    check_stale_data,
+    date_check,
+    date_fix,
+    validate_column_names,
+    validate_end_of_month_column,
+    validate_filename_convention,
+    validate_float_precision,
+    validate_special_characters,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _ref_columns_for(filename):
+    """Return the expected column list for this filename, or None if unrecognised."""
+    if "FUM_flow" in filename:
+        return config.FUM_COLS
+    if "monthly_perf" in filename:
+        return config.PERF_COLS
+    if "peer_rank" in filename:
+        return config.PEER_COLS
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def file_check(df_dict, lbu_list, input_folder):
+    """
+    Validate every DataFrame in df_dict.
+
+    Returns:
+        valid_files   (dict) — files that passed all checks, keyed by filename
+        invalid_files (dict) — files that failed, keyed by filename; value is a dict
+                               of {check_name: issue_detail}
+        stale_warnings (dict) — files whose data looks identical to the prior month,
+                                keyed by filename; value is the stale-check message
+    """
+    logger.info("Checking files: %s", list(df_dict.keys()))
+    valid_files = {}
+    invalid_files = {}
+    stale_warnings = {}
+
+    for file, filedata in df_dict.items():
+        ref_columns = _ref_columns_for(file)
+        if ref_columns is None:
+            logger.warning("Unrecognised file type, skipping: %s", file)
+            invalid_files[file] = {"filename_validity": "Unrecognised file type"}
+            continue
+
+        date_match = re.search(r"(\d{8})", file)
+        if not date_match:
+            invalid_files[file] = {"filename_validity": "Could not extract date from filename"}
+            continue
+        filename_date_str = date_match.group(1)
+
+        # --- filename convention ---
+        filename_validity = validate_filename_convention(file, lbu_list)
+
+        # --- date in filename must be end-of-month ---
+        date_validity = not date_check(filename_date_str)
+        if date_validity is not True:
+            new_date = date_fix(filename_date_str)
+            file = file.replace(filename_date_str, new_date)
+            filename_date_str = new_date
+            logger.info("Date fixed in filename → %s", file)
+
+        # --- Valuation Period column ---
+        val_date_validity = validate_end_of_month_column(filedata, ["Valuation Period"])
+        if val_date_validity is not True:
+            logger.info(
+                "Replacing Valuation Period values in %s with %s", file, filename_date_str
+            )
+            for col, row_indices in val_date_validity.items():
+                for idx in row_indices:
+                    filedata.at[idx, col] = filename_date_str
+
+        # Re-validate after auto-fix
+        date_validity = not date_check(filename_date_str)
+        val_date_validity = validate_end_of_month_column(filedata, ["Valuation Period"])
+
+        # --- column names ---
+        column_name_validity = validate_column_names(filedata, ref_columns)
+
+        # --- special characters in Fund Code ---
+        key_validity = validate_special_characters(filedata, ref_columns=["Fund Code"])
+
+        # --- float precision ---
+        float_2dp_validity = validate_float_precision(
+            filedata, 2,
+            ref_columns=["AUM in Base Currency (month-end)", "Closing FUM", "Net Flows"],
+        )
+        float_4dp_validity = validate_float_precision(
+            filedata, 4,
+            ref_columns=["Annual Management Fee", "Management Fee (%)"],
+        )
+        float_6dp_validity = validate_float_precision(
+            filedata, 6,
+            ref_columns=["Monthly performance"],
+        )
+
+        # --- stale data check (compare against prior month file) ---
+        is_stale, stale_msg = check_stale_data(file, filedata, input_folder)
+        if is_stale is True:
+            logger.warning("STALE DATA: %s — %s", file, stale_msg)
+            stale_warnings[file] = stale_msg
+        elif is_stale is None:
+            logger.info("Stale check skipped for %s: %s", file, stale_msg)
+        else:
+            logger.info("Stale check passed for %s: %s", file, stale_msg)
+
+        # --- aggregate result ---
+        checks = {
+            "filename_validity": filename_validity,
+            "date_validity": date_validity,
+            "val_date_validity": val_date_validity,
+            "column_name_validity": column_name_validity,
+            "key_validity": key_validity,
+            "float_2dp_validity": float_2dp_validity,
+            "float_4dp_validity": float_4dp_validity,
+            "float_6dp_validity": float_6dp_validity,
+        }
+        failures = {name: result for name, result in checks.items() if result is not True}
+
+        if not failures:
+            valid_files[file] = filedata
+        else:
+            logger.warning("File failed validation: %s — %s", file, list(failures.keys()))
+            invalid_files[file] = failures
+
+    return valid_files, invalid_files, stale_warnings
