@@ -176,3 +176,78 @@ def check_stale_data(filename, current_df, input_folder):
     if curr_subset.equals(prev_subset):
         return True, f"All data values identical to prior month file ({prev_filename})"
     return False, f"Data differs from prior month file ({prev_filename})"
+
+
+def check_aum_variance(filename, current_df, input_folder, threshold=0.05):
+    """
+    Compare per-fund AUM against the prior month's file.
+
+    Fails if any fund's AUM changes by more than `threshold` (default 5%).
+    Returns True if all funds are within range, or a dict of offending funds.
+    Returns True (pass) if the prior month file is absent — benefit of the doubt.
+
+    AUM column checked: first of "AUM in Base Currency (month-end)" or "Closing FUM"
+    that is present in the file. Files with neither column are skipped.
+    Funds that are new (absent from prior file) are skipped.
+    """
+    # Identify which AUM column this file carries
+    aum_col = next(
+        (c for c in ["AUM in Base Currency (month-end)", "Closing FUM"] if c in current_df.columns),
+        None,
+    )
+    if aum_col is None or "Fund Code" not in current_df.columns:
+        return True  # File type has no comparable AUM column — skip
+
+    # Locate prior month file
+    date_match = re.search(r"(\d{8})", filename)
+    if not date_match:
+        return True
+
+    date_str = date_match.group(1)
+    try:
+        date_obj = datetime.strptime(date_str, "%Y%m%d")
+    except ValueError:
+        return True
+
+    prev_month_last = date_obj.replace(day=1) - timedelta(days=1)
+    prev_filepath = os.path.join(
+        input_folder,
+        filename.replace(date_str, prev_month_last.strftime("%Y%m%d")),
+    )
+
+    if not os.path.exists(prev_filepath):
+        return True  # No prior file — cannot compare, pass
+
+    try:
+        prev_df = pd.read_csv(prev_filepath, dtype=str, skip_blank_lines=True)
+    except Exception:
+        return True
+
+    if aum_col not in prev_df.columns or "Fund Code" not in prev_df.columns:
+        return True
+
+    curr_aum = current_df[["Fund Code", aum_col]].copy()
+    prev_aum = prev_df[["Fund Code", aum_col]].copy()
+
+    curr_aum[aum_col] = pd.to_numeric(curr_aum[aum_col], errors="coerce")
+    prev_aum[aum_col] = pd.to_numeric(prev_aum[aum_col], errors="coerce")
+
+    merged = curr_aum.merge(prev_aum, on="Fund Code", suffixes=("_curr", "_prev"))
+
+    issues = {}
+    for _, row in merged.iterrows():
+        curr_val = row[f"{aum_col}_curr"]
+        prev_val = row[f"{aum_col}_prev"]
+
+        if pd.isna(curr_val) or pd.isna(prev_val) or prev_val == 0:
+            continue
+
+        change_pct = (curr_val - prev_val) / abs(prev_val)
+        if abs(change_pct) > threshold:
+            issues[row["Fund Code"]] = {
+                "prev_aum": round(float(prev_val), 2),
+                "curr_aum": round(float(curr_val), 2),
+                "change_pct": round(change_pct * 100, 2),
+            }
+
+    return True if not issues else issues

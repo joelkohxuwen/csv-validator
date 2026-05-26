@@ -3,6 +3,7 @@ import re
 
 import config
 from .validators import (
+    check_aum_variance,
     check_stale_data,
     date_check,
     date_fix,
@@ -39,13 +40,10 @@ def file_check(df_dict, lbu_list, input_folder):
         valid_files   (dict) — files that passed all checks, keyed by filename
         invalid_files (dict) — files that failed, keyed by filename; value is a dict
                                of {check_name: issue_detail}
-        stale_warnings (dict) — files whose data looks identical to the prior month,
-                                keyed by filename; value is the stale-check message
     """
     logger.info("Checking files: %s", list(df_dict.keys()))
     valid_files = {}
     invalid_files = {}
-    stale_warnings = {}
 
     for file, filedata in df_dict.items():
         ref_columns = _ref_columns_for(file)
@@ -105,15 +103,19 @@ def file_check(df_dict, lbu_list, input_folder):
             ref_columns=["Monthly performance"],
         )
 
-        # --- stale data check (compare against prior month file) ---
+        # --- stale data check — fails the file if data is identical to prior month ---
         is_stale, stale_msg = check_stale_data(file, filedata, input_folder)
         if is_stale is True:
+            stale_validity = stale_msg          # truthy non-True → treated as failure
             logger.warning("STALE DATA: %s — %s", file, stale_msg)
-            stale_warnings[file] = stale_msg
-        elif is_stale is None:
-            logger.info("Stale check skipped for %s: %s", file, stale_msg)
         else:
-            logger.info("Stale check passed for %s: %s", file, stale_msg)
+            stale_validity = True               # differs from prior month, or no prior file
+            logger.info("Stale check: %s — %s", file, stale_msg)
+
+        # --- AUM monthly variance check (>5% change per fund fails the file) ---
+        aum_variance_validity = check_aum_variance(file, filedata, input_folder)
+        if aum_variance_validity is not True:
+            logger.warning("AUM VARIANCE: %s — %s", file, aum_variance_validity)
 
         # --- aggregate result ---
         checks = {
@@ -125,6 +127,8 @@ def file_check(df_dict, lbu_list, input_folder):
             "float_2dp_validity": float_2dp_validity,
             "float_4dp_validity": float_4dp_validity,
             "float_6dp_validity": float_6dp_validity,
+            "stale_validity": stale_validity,
+            "aum_variance_validity": aum_variance_validity,
         }
         failures = {name: result for name, result in checks.items() if result is not True}
 
@@ -134,4 +138,4 @@ def file_check(df_dict, lbu_list, input_folder):
             logger.warning("File failed validation: %s — %s", file, list(failures.keys()))
             invalid_files[file] = failures
 
-    return valid_files, invalid_files, stale_warnings
+    return valid_files, invalid_files

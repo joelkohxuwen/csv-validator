@@ -118,6 +118,16 @@ python run.py
 
 A timestamped log file is written to `LOG_DIR` on every run. Console output mirrors the log.
 
+### Override run
+
+If a file contains valid data but fails one or more checks, you can save it directly while skipping all validation:
+
+```
+python run.py --override FILENAME1.csv FILENAME2.csv
+```
+
+Override files still have numeric formatting applied. The override is logged explicitly so there is an audit trail.
+
 ---
 
 ## Scheduling on Windows Task Scheduler
@@ -152,7 +162,8 @@ C:\Users\username\AppData\Local\Programs\Python\Python311\python.exe run.py
 | Column names | All expected columns are present |
 | Special characters | Key identifier columns contain only permitted characters |
 | Float precision | Numeric columns do not exceed the configured decimal places |
-| Stale data | Current file is compared against the previous month's equivalent file; a warning is logged if the data appears identical |
+| Stale data | Current file is compared against the previous month's equivalent file; the file **fails** if the data appears identical |
+| AUM monthly variance | Per-fund AUM is compared against the prior month; the file **fails** if any fund's AUM changes by more than 5% |
 
 ---
 
