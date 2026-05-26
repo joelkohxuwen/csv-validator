@@ -125,18 +125,33 @@ def validate_special_characters(df, ref_columns=None):
     return True if not issues else issues
 
 
+def _any_value_changed(merged, col):
+    """
+    Return True if at least one row shows a numeric change between _curr and _prev.
+    Rows where both sides are NaN are treated as unchanged.
+    """
+    curr = merged[f"{col}_curr"]
+    prev = merged[f"{col}_prev"]
+    both_nan = curr.isna() & prev.isna()
+    changed = ~(both_nan | (curr == prev))
+    return changed.any()
+
+
 def check_stale_data(filename, current_df, archive_path):
     """
-    Compare current file against the equivalent file from the previous calendar month.
+    Check for stale data against the prior month's file on three dimensions:
 
-    The prior-month file is looked up under archive_path/<year>/<filename>, where
-    <year> is the year of the previous month and <filename> has its YYYYMMDD portion
-    replaced by the last day of that month.
+    1. AUM unchanged    — fails if AUM column is present and no fund shows any change
+    2. Returns unchanged — fails if returns column is present and no fund shows any change
+    3. Fund universe changed — fails if the set of Fund Codes has grown or shrunk
 
-    Returns a tuple (is_stale, message):
-      (True,  msg) — all comparable data is identical to prior month (potentially stale)
-      (False, msg) — data differs from prior month (looks fresh)
-      (None,  msg) — check could not be performed (no prior file found, etc.)
+    The prior-month file is looked up under archive_path/<year>/<filename>.
+
+    Returns:
+      (True,  issues_dict) — one or more stale checks failed; dict keys are
+                             "aum", "returns", "fund_universe"
+      (False, msg)         — all applicable checks passed
+      (None,  msg)         — check could not be performed (no prior file, etc.)
     """
     date_match = re.search(r"(\d{8})", filename)
     if not date_match:
@@ -148,11 +163,8 @@ def check_stale_data(filename, current_df, archive_path):
     except ValueError:
         return None, f"Invalid date in filename: {date_str}"
 
-    # Last day of previous month — its year determines the archive subfolder
     prev_month_last = date_obj.replace(day=1) - timedelta(days=1)
-    prev_date_str = prev_month_last.strftime("%Y%m%d")
-
-    prev_filename = filename.replace(date_str, prev_date_str)
+    prev_filename = filename.replace(date_str, prev_month_last.strftime("%Y%m%d"))
     prev_filepath = os.path.join(archive_path, str(prev_month_last.year), prev_filename)
 
     if not os.path.exists(prev_filepath):
@@ -163,20 +175,58 @@ def check_stale_data(filename, current_df, archive_path):
     except Exception as e:
         return None, f"Could not read prior month file: {e}"
 
-    # Exclude Valuation Period — it is expected to differ every month
-    compare_cols = [
-        c for c in current_df.columns
-        if c in prev_df.columns and c != "Valuation Period"
-    ]
-    if not compare_cols:
-        return None, "No comparable columns found"
+    issues = {}
+    has_fund_code = (
+        "Fund Code" in current_df.columns and "Fund Code" in prev_df.columns
+    )
 
-    curr_subset = current_df[compare_cols].reset_index(drop=True).astype(str)
-    prev_subset = prev_df[compare_cols].reset_index(drop=True).astype(str)
+    # --- 1. AUM change check ---
+    aum_col = next(
+        (c for c in ["AUM in Base Currency (month-end)", "Closing FUM"]
+         if c in current_df.columns and c in prev_df.columns),
+        None,
+    )
+    if aum_col and has_fund_code:
+        curr = current_df[["Fund Code", aum_col]].copy()
+        prev = prev_df[["Fund Code", aum_col]].copy()
+        curr[aum_col] = pd.to_numeric(curr[aum_col], errors="coerce")
+        prev[aum_col] = pd.to_numeric(prev[aum_col], errors="coerce")
+        merged = curr.merge(prev, on="Fund Code", suffixes=("_curr", "_prev"))
+        if not merged.empty and not _any_value_changed(merged, aum_col):
+            issues["aum"] = f"No change in '{aum_col}' for any fund"
 
-    if curr_subset.equals(prev_subset):
-        return True, f"All data values identical to prior month file ({prev_filename})"
-    return False, f"Data differs from prior month file ({prev_filename})"
+    # --- 2. Returns change check ---
+    returns_col = next(
+        (c for c in ["Monthly performance"]
+         if c in current_df.columns and c in prev_df.columns),
+        None,
+    )
+    if returns_col and has_fund_code:
+        curr = current_df[["Fund Code", returns_col]].copy()
+        prev = prev_df[["Fund Code", returns_col]].copy()
+        curr[returns_col] = pd.to_numeric(curr[returns_col], errors="coerce")
+        prev[returns_col] = pd.to_numeric(prev[returns_col], errors="coerce")
+        merged = curr.merge(prev, on="Fund Code", suffixes=("_curr", "_prev"))
+        if not merged.empty and not _any_value_changed(merged, returns_col):
+            issues["returns"] = f"No change in '{returns_col}' for any fund"
+
+    # --- 3. Fund universe change check ---
+    if has_fund_code:
+        curr_funds = set(current_df["Fund Code"].dropna().astype(str))
+        prev_funds = set(prev_df["Fund Code"].dropna().astype(str))
+        if curr_funds != prev_funds:
+            added   = sorted(curr_funds - prev_funds)
+            removed = sorted(prev_funds - curr_funds)
+            parts = []
+            if added:
+                parts.append(f"{len(added)} added: {added}")
+            if removed:
+                parts.append(f"{len(removed)} removed: {removed}")
+            issues["fund_universe"] = f"Fund universe changed — {'; '.join(parts)}"
+
+    if issues:
+        return True, issues
+    return False, f"Stale checks passed against {prev_filename}"
 
 
 def check_aum_variance(filename, current_df, archive_path, threshold=0.05):
