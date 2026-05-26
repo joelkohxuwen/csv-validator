@@ -76,6 +76,10 @@ OUTPUT_PATH = r"\\fileserver\shared\output\formatted"
 #   \\fileserver\shared\archive\2026\FUND_monthly_perf_MGR_20260131.csv
 ARCHIVE_PATH = r"\\fileserver\shared\archive"
 
+# Folder where successfully processed input files are moved after saving.
+# Files that fail validation remain in INPUT_PATH, making rejections immediately visible.
+PROCESSED_PATH = r"\\fileserver\shared\input\processed"
+
 # Directory for log files (created automatically if it does not exist)
 LOG_DIR = r"C:\Users\username\csv_validator_logs"
 
@@ -175,6 +179,6 @@ C:\Users\username\AppData\Local\Programs\Python\Python311\python.exe run.py
 
 ## Output
 
-- **Valid files** are formatted and written to `OUTPUT_PATH`
-- **Invalid files** are logged with a per-check breakdown of what failed and are not saved
-- **Override files** bypass all checks and are saved directly with formatting applied; the override is recorded in the log
+- **Valid files** are formatted and written to `OUTPUT_PATH`; the original input file is moved to `PROCESSED_PATH`
+- **Invalid files** are logged with a per-check breakdown of what failed; the input file stays in `INPUT_PATH`, making rejections immediately visible
+- **Override files** bypass all checks, are saved directly with formatting applied, and are moved to `PROCESSED_PATH`; the override is recorded in the log

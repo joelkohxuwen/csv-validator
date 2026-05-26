@@ -17,6 +17,11 @@ OUTPUT_PATH = r"\\server\share\path\to\output\folder"
 #   C:\path\to\archive\2026\FUND_monthly_perf_MGR_20260131.csv
 ARCHIVE_PATH = r"C:\path\to\your\archive\folder"
 
+# Folder where successfully processed input files are moved after saving.
+# Files that fail validation remain in INPUT_PATH, making rejections immediately visible.
+# Created automatically if it does not exist.
+PROCESSED_PATH = r"C:\path\to\your\processed\folder"
+
 # Directory where log files will be written (created automatically if absent).
 LOG_DIR = r"C:\path\to\your\log\folder"
 

@@ -46,7 +46,7 @@ except ImportError:
     )
 
 from csv_validator.checker import file_check
-from csv_validator.io_utils import read_csv_files, save_to_csv
+from csv_validator.io_utils import move_to_processed, read_csv_files, save_to_csv
 
 
 def _parse_args():
@@ -107,14 +107,16 @@ def main():
         normal_files, lbu_list=config.LBU_LIST, archive_path=config.ARCHIVE_PATH
     )
 
-    # 4. Save valid files
+    # 4. Save valid files and move originals to processed folder
     for filename, filedata in valid_files.items():
         save_to_csv(filename, filedata, config.PRECISION_MAP, config.OUTPUT_PATH)
+        move_to_processed(filename, config.INPUT_PATH, config.PROCESSED_PATH)
 
-    # 5. Save override files (formatting applied, all checks skipped)
+    # 5. Save override files and move originals to processed folder
     for filename, filedata in override_dict.items():
         logger.warning("OVERRIDE: saving %s without validation", filename)
         save_to_csv(filename, filedata, config.PRECISION_MAP, config.OUTPUT_PATH)
+        move_to_processed(filename, config.INPUT_PATH, config.PROCESSED_PATH)
 
     # 6. Summary
     logger.info("=" * 60)

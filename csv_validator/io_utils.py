@@ -2,6 +2,7 @@ import csv
 import glob
 import logging
 import os
+import shutil
 
 import pandas as pd
 
@@ -63,3 +64,25 @@ def save_to_csv(filename, filedata, precision_map, folder_path):
 
     df.to_csv(output_path, index=False, quoting=csv.QUOTE_ALL, quotechar='"')
     logger.info("Saved: %s", output_path)
+
+
+def move_to_processed(filename, input_folder, processed_folder):
+    """
+    Move a successfully saved input file into processed_folder.
+
+    If the filename was date-corrected during validation the key in valid_files
+    will differ from the filename on disk; a warning is logged in that case and
+    the file is left in place rather than silently failing.
+    """
+    src = os.path.join(input_folder, filename)
+    if not os.path.exists(src):
+        logger.warning(
+            "Could not move '%s' — file not found in input folder "
+            "(filename may have been date-corrected during validation).",
+            filename,
+        )
+        return
+    os.makedirs(processed_folder, exist_ok=True)
+    dst = os.path.join(processed_folder, filename)
+    shutil.move(src, dst)
+    logger.info("Moved to processed: %s", filename)
