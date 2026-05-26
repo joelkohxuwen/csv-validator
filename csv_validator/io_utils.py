@@ -2,6 +2,7 @@ import csv
 import glob
 import logging
 import os
+import re
 import shutil
 
 import pandas as pd
@@ -70,18 +71,40 @@ def move_to_processed(filename, input_folder, processed_folder):
     """
     Move a successfully saved input file into processed_folder.
 
-    If the filename was date-corrected during validation the key in valid_files
-    will differ from the filename on disk; a warning is logged in that case and
-    the file is left in place rather than silently failing.
+    If the exact filename is not found (e.g. the date was corrected during
+    validation so the key in valid_files differs from the name on disk), a
+    wildcard glob is tried with the 8-digit date replaced by '*'.  If exactly
+    one match is found that file is moved; if there are multiple ambiguous
+    matches a warning is logged and the file is left in place.
     """
     src = os.path.join(input_folder, filename)
     if not os.path.exists(src):
-        logger.warning(
-            "Could not move '%s' — file not found in input folder "
-            "(filename may have been date-corrected during validation).",
-            filename,
-        )
-        return
+        # Fallback: replace the 8-digit date with a wildcard and search.
+        pattern = os.path.join(input_folder, re.sub(r"\d{8}", "*", filename))
+        matches = glob.glob(pattern)
+        if len(matches) == 1:
+            src = matches[0]
+            original_name = os.path.basename(src)
+            logger.info(
+                "Date-corrected filename: moving original '%s' as '%s'",
+                original_name,
+                filename,
+            )
+        elif len(matches) > 1:
+            logger.warning(
+                "Could not move '%s' — multiple files match the date-wildcard "
+                "pattern '%s': %s",
+                filename,
+                pattern,
+                [os.path.basename(m) for m in matches],
+            )
+            return
+        else:
+            logger.warning(
+                "Could not move '%s' — file not found in input folder.",
+                filename,
+            )
+            return
     os.makedirs(processed_folder, exist_ok=True)
     dst = os.path.join(processed_folder, filename)
     shutil.move(src, dst)
