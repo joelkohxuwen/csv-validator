@@ -45,7 +45,7 @@ except ImportError:
         "Copy config.example.py to config.py and fill in your actual paths."
     )
 
-from csv_validator.checker import file_check
+from csv_validator.checker import apply_auto_corrections, file_check
 from csv_validator.io_utils import move_to_processed, read_csv_files, save_to_csv
 
 
@@ -112,8 +112,9 @@ def main():
         save_to_csv(filename, filedata, config.PRECISION_MAP, config.OUTPUT_PATH)
         move_to_processed(filename, config.INPUT_PATH, config.PROCESSED_PATH)
 
-    # 5. Save override files and move originals to processed folder
+    # 5. Save override files (auto-corrections applied; validation skipped) and move originals
     for filename, filedata in override_dict.items():
+        filename, filedata = apply_auto_corrections(filename, filedata)
         logger.warning("OVERRIDE: saving %s without validation", filename)
         save_to_csv(filename, filedata, config.PRECISION_MAP, config.OUTPUT_PATH)
         move_to_processed(filename, config.INPUT_PATH, config.PROCESSED_PATH)

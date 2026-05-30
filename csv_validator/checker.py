@@ -32,6 +32,52 @@ def _ref_columns_for(filename):
 # Public API
 # ---------------------------------------------------------------------------
 
+def apply_auto_corrections(filename, df):
+    """
+    Apply date and Valuation Period corrections without running any validation checks.
+
+    Two corrections are made:
+      1. If the 8-digit date in the filename is not an end-of-month date it is
+         replaced with the last day of that month.
+      2. Any rows in the 'Valuation Period' column that do not match the
+         (possibly corrected) filename date are overwritten with that date.
+
+    Returns:
+        (corrected_filename, corrected_df)
+
+    The returned df is a copy — the original is never mutated.
+    If no date can be found in the filename the inputs are returned unchanged.
+    """
+    date_match = re.search(r"(\d{8})", filename)
+    if not date_match:
+        logger.warning("apply_auto_corrections: no date found in '%s', skipping.", filename)
+        return filename, df.copy()
+
+    filename_date_str = date_match.group(1)
+    corrected_df = df.copy()
+
+    # 1. Fix date in filename if not end-of-month
+    if date_check(filename_date_str):          # True → has an issue
+        new_date = date_fix(filename_date_str)
+        filename = filename.replace(filename_date_str, new_date)
+        filename_date_str = new_date
+        logger.info("Auto-correction: date in filename fixed → %s", filename)
+
+    # 2. Fix Valuation Period column values
+    if "Valuation Period" in corrected_df.columns:
+        val_issues = validate_end_of_month_column(corrected_df, ["Valuation Period"])
+        if val_issues is not True:
+            logger.info(
+                "Auto-correction: replacing Valuation Period values in %s with %s",
+                filename, filename_date_str,
+            )
+            for col, row_indices in val_issues.items():
+                for idx in row_indices:
+                    corrected_df.at[idx, col] = filename_date_str
+
+    return filename, corrected_df
+
+
 def file_check(df_dict, lbu_list, archive_path):
     """
     Validate every DataFrame in df_dict.
@@ -56,30 +102,15 @@ def file_check(df_dict, lbu_list, archive_path):
         if not date_match:
             invalid_files[file] = {"filename_validity": "Could not extract date from filename"}
             continue
-        filename_date_str = date_match.group(1)
+
+        # --- apply date and Valuation Period corrections before validating ---
+        file, filedata = apply_auto_corrections(file, filedata)
+        filename_date_str = re.search(r"(\d{8})", file).group(1)
 
         # --- filename convention ---
         filename_validity = validate_filename_convention(file, lbu_list)
 
-        # --- date in filename must be end-of-month ---
-        date_validity = not date_check(filename_date_str)
-        if date_validity is not True:
-            new_date = date_fix(filename_date_str)
-            file = file.replace(filename_date_str, new_date)
-            filename_date_str = new_date
-            logger.info("Date fixed in filename → %s", file)
-
-        # --- Valuation Period column ---
-        val_date_validity = validate_end_of_month_column(filedata, ["Valuation Period"])
-        if val_date_validity is not True:
-            logger.info(
-                "Replacing Valuation Period values in %s with %s", file, filename_date_str
-            )
-            for col, row_indices in val_date_validity.items():
-                for idx in row_indices:
-                    filedata.at[idx, col] = filename_date_str
-
-        # Re-validate after auto-fix
+        # --- re-validate after auto-corrections ---
         date_validity = not date_check(filename_date_str)
         val_date_validity = validate_end_of_month_column(filedata, ["Valuation Period"])
 
